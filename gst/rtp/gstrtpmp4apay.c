@@ -140,6 +140,7 @@ gst_rtp_mp4a_pay_parse_audio_config (GstRtpMP4APay * rtpmp4apay,
   guint8 objectType;
   guint8 samplingIdx;
   guint8 channelCfg;
+  GstBitReader br;
 
   gst_buffer_map (buffer, &map, GST_MAP_READ);
   data = map.data;
@@ -148,17 +149,24 @@ gst_rtp_mp4a_pay_parse_audio_config (GstRtpMP4APay * rtpmp4apay,
   if (size < 2)
     goto too_short;
 
+  gst_bit_reader_init (&br, data, size);
+
   /* any object type is fine, we need to copy it to the profile-level-id field. */
-  objectType = (data[0] & 0xf8) >> 3;
+  gst_bit_reader_get_bits_uint8 (&br, &objectType, 5);
+
+  if (objectType == 31 /* AOT_ESCAPE */) {
+    // more than bits needed for AOT - take subsequent 6 bits 6:11
+    gst_bit_reader_get_bits_uint8 (&br, &objectType, 6);
+  }
   if (objectType == 0)
     goto invalid_object;
 
-  samplingIdx = ((data[0] & 0x07) << 1) | ((data[1] & 0x80) >> 7);
+  gst_bit_reader_get_bits_uint8 (&br, &samplingIdx, 4);
   /* only fixed values for now */
   if (samplingIdx > 12 && samplingIdx != 15)
     goto wrong_freq;
 
-  channelCfg = ((data[1] & 0x78) >> 3);
+  gst_bit_reader_get_bits_uint8 (&br, &channelCfg, 4);
   if (channelCfg > 7)
     goto wrong_channels;
 
